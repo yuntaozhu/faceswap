@@ -198,7 +198,7 @@
 
         async function uploadFile(file) {
             // Replicate 提供了自己的文件上传接口
-            const uploadUrlResponse = await fetch(CORS_PROXY + `https://api.replicate.com/v1/predictions/files`, {
+            const uploadUrlResponse = await fetch(CORS_PROXY + `https://api.replicate.com/v1/files`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Token ${API_TOKEN}`,

@@ -150,10 +150,7 @@
         const loader = document.getElementById('loader');
         const resultDiv = document.getElementById('result');
         
-        // 将 API Token 直接硬编码到脚本中
         const API_TOKEN = 'f56ec386ae935002f1a9643893ebd6bc44a4d75b';
-
-        // 使用一个公开的 CORS 代理来绕过浏览器的安全限制
         const CORS_PROXY = "https://cors-anywhere.herokuapp.com/";
         const REPLICATE_API_URL = CORS_PROXY + "https://api.replicate.com/v1/predictions";
 
@@ -166,23 +163,19 @@
                 return;
             }
 
-            // 禁用按钮并显示加载动画
             startButton.disabled = true;
             loader.style.display = 'block';
             statusDiv.textContent = '正在上传文件...';
             resultDiv.innerHTML = '';
 
             try {
-                // 步骤 1: 上传文件并获取 URL
                 const swapImageUrl = await uploadFile(swapImageFile);
                 statusDiv.textContent = '源图片上传成功！正在上传目标视频...';
                 const targetVideoUrl = await uploadFile(targetVideoFile);
                 statusDiv.textContent = '文件上传完成！正在创建换脸任务...';
 
-                // 步骤 2: 创建 Replicate 预测任务
                 const prediction = await createPrediction(swapImageUrl, targetVideoUrl);
 
-                // 步骤 3: 轮询任务状态
                 statusDiv.textContent = '任务已创建，正在处理中... 请耐心等待。';
                 await pollPredictionStatus(prediction);
 
@@ -190,34 +183,32 @@
                 console.error(error);
                 statusDiv.textContent = `发生错误: ${error.message}`;
             } finally {
-                // 重新启用按钮并隐藏加载动画
                 startButton.disabled = false;
                 loader.style.display = 'none';
             }
         });
 
         async function uploadFile(file) {
-            // Replicate 提供了自己的文件上传接口
             const uploadUrlResponse = await fetch(CORS_PROXY + `https://api.replicate.com/v1/files`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Token ${API_TOKEN}`,
                     'Content-Type': 'application/json'
                 },
+                // *** 这是被修正的部分 ***
                 body: JSON.stringify({
-                    'filename': file.name,
+                    'file_name': file.name,
                     'content_type': file.type
                 })
             });
             const uploadUrlData = await uploadUrlResponse.json();
             
-            if (uploadUrlResponse.status !== 200) {
+            if (uploadUrlResponse.status > 299) {
                  throw new Error(`获取上传 URL 失败: ${uploadUrlData.detail}`);
             }
 
             const { serving_url, upload_url } = uploadUrlData;
             
-            // 使用获取到的 URL 上传文件
             await fetch(upload_url, {
                 method: 'PUT',
                 headers: {
@@ -237,7 +228,6 @@
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    // 这是 roop_face_swap 模型的最新版本
                     version: "116bbf0f4e14d808f655e87e5448233cceff10a45f659d71539cafb7163b2e84",
                     input: {
                         swap_image: swapImageUrl,
@@ -261,18 +251,17 @@
             let getUrl = CORS_PROXY + `https://api.replicate.com/v1/predictions/${prediction.id}`;
 
             while (prediction.status !== 'succeeded' && prediction.status !== 'failed') {
-                await sleep(4000); // 每 4 秒查询一次
+                await sleep(4000); 
                 const response = await fetch(getUrl, {
                     headers: {
                         'Authorization': `Token ${API_TOKEN}`
                     }
                 });
                 prediction = await response.json();
-                if (response.status !== 200) {
+                if (response.status > 299) {
                     throw new Error(prediction.detail || '查询任务状态失败。');
                 }
                 statusDiv.textContent = `任务状态: ${prediction.status}...`;
-                 console.log(prediction);
             }
 
             if (prediction.status === 'succeeded') {
@@ -284,12 +273,10 @@
         }
 
         function displayResult(outputUrl) {
-            // 创建视频播放器
             const video = document.createElement('video');
             video.controls = true;
             video.src = outputUrl;
             
-            // 创建下载链接
             const downloadLink = document.createElement('a');
             downloadLink.href = outputUrl;
             downloadLink.textContent = '下载视频';

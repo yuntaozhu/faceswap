@@ -126,11 +126,6 @@
         <p>上传一张源图片和目标视频，即可体验换脸效果。</p>
 
         <div class="form-group">
-            <label for="api-token">Replicate API Token</label>
-            <input type="text" id="api-token" placeholder="在此输入您的 API Token" value="f56ec386ae935002f1a9643893ebd6bc44a4d75b">
-        </div>
-
-        <div class="form-group">
             <label for="swap-image">源图片 (包含人脸)</label>
             <input type="file" id="swap-image" accept="image/png, image/jpeg">
         </div>
@@ -148,25 +143,26 @@
     </div>
 
     <script>
-        const apiTokenInput = document.getElementById('api-token');
         const swapImageInput = document.getElementById('swap-image');
         const targetVideoInput = document.getElementById('target-video');
         const startButton = document.getElementById('start-button');
         const statusDiv = document.getElementById('status');
         const loader = document.getElementById('loader');
         const resultDiv = document.getElementById('result');
+        
+        // 将 API Token 直接硬编码到脚本中
+        const API_TOKEN = 'f56ec386ae935002f1a9643893ebd6bc44a4d75b';
 
         // 使用一个公开的 CORS 代理来绕过浏览器的安全限制
         const CORS_PROXY = "https://cors-anywhere.herokuapp.com/";
         const REPLICATE_API_URL = CORS_PROXY + "https://api.replicate.com/v1/predictions";
 
         startButton.addEventListener('click', async () => {
-            const apiToken = apiTokenInput.value.trim();
             const swapImageFile = swapImageInput.files[0];
             const targetVideoFile = targetVideoInput.files[0];
 
-            if (!apiToken || !swapImageFile || !targetVideoFile) {
-                statusDiv.textContent = '错误：请填写所有字段并上传文件。';
+            if (!swapImageFile || !targetVideoFile) {
+                statusDiv.textContent = '错误：请同时上传源图片和目标视频。';
                 return;
             }
 
@@ -178,17 +174,17 @@
 
             try {
                 // 步骤 1: 上传文件并获取 URL
-                const swapImageUrl = await uploadFile(swapImageFile, apiToken);
+                const swapImageUrl = await uploadFile(swapImageFile);
                 statusDiv.textContent = '源图片上传成功！正在上传目标视频...';
-                const targetVideoUrl = await uploadFile(targetVideoFile, apiToken);
+                const targetVideoUrl = await uploadFile(targetVideoFile);
                 statusDiv.textContent = '文件上传完成！正在创建换脸任务...';
 
                 // 步骤 2: 创建 Replicate 预测任务
-                const prediction = await createPrediction(apiToken, swapImageUrl, targetVideoUrl);
+                const prediction = await createPrediction(swapImageUrl, targetVideoUrl);
 
                 // 步骤 3: 轮询任务状态
                 statusDiv.textContent = '任务已创建，正在处理中... 请耐心等待。';
-                await pollPredictionStatus(prediction, apiToken);
+                await pollPredictionStatus(prediction);
 
             } catch (error) {
                 console.error(error);
@@ -200,12 +196,12 @@
             }
         });
 
-        async function uploadFile(file, apiToken) {
+        async function uploadFile(file) {
             // Replicate 提供了自己的文件上传接口
             const uploadUrlResponse = await fetch(CORS_PROXY + `https://api.replicate.com/v1/predictions/files`, {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Token ${apiToken}`,
+                    'Authorization': `Token ${API_TOKEN}`,
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
@@ -233,11 +229,11 @@
             return serving_url;
         }
 
-        async function createPrediction(apiToken, swapImageUrl, targetVideoUrl) {
+        async function createPrediction(swapImageUrl, targetVideoUrl) {
             const response = await fetch(REPLICATE_API_URL, {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Token ${apiToken}`,
+                    'Authorization': `Token ${API_TOKEN}`,
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
@@ -261,14 +257,14 @@
             return new Promise(resolve => setTimeout(resolve, ms));
         }
 
-        async function pollPredictionStatus(prediction, apiToken) {
+        async function pollPredictionStatus(prediction) {
             let getUrl = CORS_PROXY + `https://api.replicate.com/v1/predictions/${prediction.id}`;
 
             while (prediction.status !== 'succeeded' && prediction.status !== 'failed') {
                 await sleep(4000); // 每 4 秒查询一次
                 const response = await fetch(getUrl, {
                     headers: {
-                        'Authorization': `Token ${apiToken}`
+                        'Authorization': `Token ${API_TOKEN}`
                     }
                 });
                 prediction = await response.json();

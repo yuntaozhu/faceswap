@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 视频换脸工具</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f4f7f6;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            background-color: #ffffff;
+            padding: 30px 40px;
+            border-radius: 12px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 600px;
+        }
+        h1 {
+            text-align: center;
+            color: #1a1a1a;
+            margin-bottom: 10px;
+        }
+        p {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 25px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+        input[type="text"], input[type="file"] {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 16px;
+        }
+        input[type="file"] {
+            padding: 10px;
+        }
+        button {
+            width: 100%;
+            padding: 15px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #aaa;
+            cursor: not-allowed;
+        }
+        #status {
+            text-align: center;
+            margin-top: 25px;
+            font-size: 16px;
+            font-weight: 500;
+            color: #333;
+            min-height: 25px;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #007bff;
+            border-radius: 50%;
+            width: 25px;
+            height: 25px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+            display: none; /* Hidden by default */
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        #result {
+            margin-top: 30px;
+            text-align: center;
+        }
+        #result video {
+            max-width: 100%;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+        #result a {
+            display: inline-block;
+            margin-top: 15px;
+            padding: 10px 20px;
+            background-color: #28a745;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 500;
+        }
+        #result a:hover {
+            background-color: #218838;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>AI 视频换脸工具</h1>
+        <p>上传一张源图片和目标视频，即可体验换脸效果。</p>
+
+        <div class="form-group">
+            <label for="api-token">Replicate API Token</label>
+            <input type="text" id="api-token" placeholder="在此输入您的 API Token" value="f56ec386ae935002f1a9643893ebd6bc44a4d75b">
+        </div>
+
+        <div class="form-group">
+            <label for="swap-image">源图片 (包含人脸)</label>
+            <input type="file" id="swap-image" accept="image/png, image/jpeg">
+        </div>
+
+        <div class="form-group">
+            <label for="target-video">目标视频</label>
+            <input type="file" id="target-video" accept="video/mp4">
+        </div>
+
+        <button id="start-button">开始换脸</button>
+
+        <div id="status"></div>
+        <div class="loader" id="loader"></div>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        const apiTokenInput = document.getElementById('api-token');
+        const swapImageInput = document.getElementById('swap-image');
+        const targetVideoInput = document.getElementById('target-video');
+        const startButton = document.getElementById('start-button');
+        const statusDiv = document.getElementById('status');
+        const loader = document.getElementById('loader');
+        const resultDiv = document.getElementById('result');
+
+        // 使用一个公开的 CORS 代理来绕过浏览器的安全限制
+        const CORS_PROXY = "https://cors-anywhere.herokuapp.com/";
+        const REPLICATE_API_URL = CORS_PROXY + "https://api.replicate.com/v1/predictions";
+
+        startButton.addEventListener('click', async () => {
+            const apiToken = apiTokenInput.value.trim();
+            const swapImageFile = swapImageInput.files[0];
+            const targetVideoFile = targetVideoInput.files[0];
+
+            if (!apiToken || !swapImageFile || !targetVideoFile) {
+                statusDiv.textContent = '错误：请填写所有字段并上传文件。';
+                return;
+            }
+
+            // 禁用按钮并显示加载动画
+            startButton.disabled = true;
+            loader.style.display = 'block';
+            statusDiv.textContent = '正在上传文件...';
+            resultDiv.innerHTML = '';
+
+            try {
+                // 步骤 1: 上传文件并获取 URL
+                const swapImageUrl = await uploadFile(swapImageFile, apiToken);
+                statusDiv.textContent = '源图片上传成功！正在上传目标视频...';
+                const targetVideoUrl = await uploadFile(targetVideoFile, apiToken);
+                statusDiv.textContent = '文件上传完成！正在创建换脸任务...';
+
+                // 步骤 2: 创建 Replicate 预测任务
+                const prediction = await createPrediction(apiToken, swapImageUrl, targetVideoUrl);
+
+                // 步骤 3: 轮询任务状态
+                statusDiv.textContent = '任务已创建，正在处理中... 请耐心等待。';
+                await pollPredictionStatus(prediction, apiToken);
+
+            } catch (error) {
+                console.error(error);
+                statusDiv.textContent = `发生错误: ${error.message}`;
+            } finally {
+                // 重新启用按钮并隐藏加载动画
+                startButton.disabled = false;
+                loader.style.display = 'none';
+            }
+        });
+
+        async function uploadFile(file, apiToken) {
+            // Replicate 提供了自己的文件上传接口
+            const uploadUrlResponse = await fetch(CORS_PROXY + `https://api.replicate.com/v1/predictions/files`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Token ${apiToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    'filename': file.name,
+                    'content_type': file.type
+                })
+            });
+            const uploadUrlData = await uploadUrlResponse.json();
+            
+            if (uploadUrlResponse.status !== 200) {
+                 throw new Error(`获取上传 URL 失败: ${uploadUrlData.detail}`);
+            }
+
+            const { serving_url, upload_url } = uploadUrlData;
+            
+            // 使用获取到的 URL 上传文件
+            await fetch(upload_url, {
+                method: 'PUT',
+                headers: {
+                  'Content-Type': file.type,
+                },
+                body: file
+            });
+
+            return serving_url;
+        }
+
+        async function createPrediction(apiToken, swapImageUrl, targetVideoUrl) {
+            const response = await fetch(REPLICATE_API_URL, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Token ${apiToken}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    // 这是 roop_face_swap 模型的最新版本
+                    version: "116bbf0f4e14d808f655e87e5448233cceff10a45f659d71539cafb7163b2e84",
+                    input: {
+                        swap_image: swapImageUrl,
+                        target_video: targetVideoUrl
+                    }
+                })
+            });
+
+            const prediction = await response.json();
+            if (response.status !== 201) {
+                throw new Error(prediction.detail || '创建任务失败。');
+            }
+            return prediction;
+        }
+        
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        async function pollPredictionStatus(prediction, apiToken) {
+            let getUrl = CORS_PROXY + `https://api.replicate.com/v1/predictions/${prediction.id}`;
+
+            while (prediction.status !== 'succeeded' && prediction.status !== 'failed') {
+                await sleep(4000); // 每 4 秒查询一次
+                const response = await fetch(getUrl, {
+                    headers: {
+                        'Authorization': `Token ${apiToken}`
+                    }
+                });
+                prediction = await response.json();
+                if (response.status !== 200) {
+                    throw new Error(prediction.detail || '查询任务状态失败。');
+                }
+                statusDiv.textContent = `任务状态: ${prediction.status}...`;
+                 console.log(prediction);
+            }
+
+            if (prediction.status === 'succeeded') {
+                statusDiv.textContent = '换脸成功！';
+                displayResult(prediction.output);
+            } else {
+                statusDiv.textContent = `任务失败: ${prediction.error}`;
+            }
+        }
+
+        function displayResult(outputUrl) {
+            // 创建视频播放器
+            const video = document.createElement('video');
+            video.controls = true;
+            video.src = outputUrl;
+            
+            // 创建下载链接
+            const downloadLink = document.createElement('a');
+            downloadLink.href = outputUrl;
+            downloadLink.textContent = '下载视频';
+            downloadLink.download = 'result.mp4';
+
+            resultDiv.appendChild(video);
+            resultDiv.appendChild(downloadLink);
+        }
+    </script>
+
+</body>
+</html>
